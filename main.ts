@@ -1,12 +1,16 @@
-// News-image entry (Node 22, standard library only): the image is the
-// entry.png beside this file, drawn by draw.py, and this program copies it
-// to /output/entry.png. The gate takes a whole PNG of at most 1 MiB and
-// 1024 by 1024 pixels, and the judge sees exactly the bytes copied.
-//
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { copyFileSync } from 'node:fs';
-import { join } from 'node:path';
+const sourceDir = dirname(fileURLToPath(import.meta.url));
+const sourceFile = resolve(sourceDir, "entry.png");
+const targetDir =
+  process.env.MAKEFUN_OUTPUT_DIR ?? resolve(sourceDir, "out");
 
-copyFileSync(new URL('./entry.png', import.meta.url), join(process.env.MAKEFUN_OUTPUT_DIR ?? '/output', 'entry.png'));
+if (!existsSync(sourceFile)) {
+  throw new Error(`entry.png not found in ${sourceDir}`);
+}
+
+mkdirSync(targetDir, { recursive: true });
+copyFileSync(sourceFile, resolve(targetDir, "entry.png"));
+console.log(`entry.png written to ${targetDir}`);
