@@ -1,287 +1,312 @@
 #!/usr/bin/env python3
-"""Draws THE WORLD TODAY — Sunday 22 November 2026.
+"""Draw 'The World Today - 22 November 2026', a newspaper-style infographic.
 
-A 1024x1024 newspaper-style infographic, drawn with PIL only, no network.
-Stories are the events of Sunday 22 November 2026, as reported that day.
-Run:  python3 draw.py   -> writes entry.png next to this file.
+The picture sums up Sunday 22 November 2026 in six stories plus a footer
+of four more headlines. It is drawn from scratch with Pillow only: no
+network, no photos, no copied artwork. Running this file always writes
+the same bytes to entry.png next to it.
 """
-import math
-import os
+
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "entry.png")
+HERE = Path(__file__).resolve().parent
 
-W, H = 1024, 1024
-PAPER = (251, 247, 238)   # newsprint cream
+PAGE = 1024
+EDGE = 34
+GAP = 20
+INNER = PAGE - 2 * EDGE
+
+PAPER = (247, 243, 232)
 CARD = (255, 255, 255)
-INK = (22, 22, 22)
-MUTED = (80, 80, 80)
-RED = (178, 34, 34)
-NAVY = (30, 58, 95)
-GOLD = (198, 142, 30)
-TEAL = (14, 116, 144)
+INK = (26, 26, 24)
+MUTED = (96, 92, 84)
+ACCENT = (176, 32, 32)
+RULE = (208, 200, 184)
+NAVY = (28, 49, 86)
+SKY = (146, 190, 228)
+LEAF = (74, 148, 78)
+FLAME = (224, 92, 32)
+EMBER = (240, 176, 40)
+GRAPE = (104, 78, 160)
+SAND = (232, 214, 160)
 
-SERIF_B = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
-SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_HOME = "/usr/share/fonts/truetype/dejavu"
 
 
-def font(path, size):
+def font(face, size):
     try:
-        return ImageFont.truetype(path, size)
+        return ImageFont.truetype(f"{FONT_HOME}/{face}", size)
     except OSError:
         return ImageFont.load_default()
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap; returns a list of lines that fit max_w."""
-    lines, cur = [], ""
-    for word in text.split():
-        trial = (cur + " " + word).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
-            cur = trial
+TITLE = font("DejaVuSerif-Bold.ttf", 66)
+DATE = font("DejaVuSans-Bold.ttf", 25)
+TAG = font("DejaVuSans-Bold.ttf", 19)
+TAG_SMALL = font("DejaVuSans-Bold.ttf", 17)
+HEAD_BIG = font("DejaVuSerif-Bold.ttf", 38)
+HEAD_MID = font("DejaVuSerif-Bold.ttf", 26)
+HEAD_WIDE = font("DejaVuSerif-Bold.ttf", 29)
+BODY_BIG = font("DejaVuSans.ttf", 21)
+BODY_MID = font("DejaVuSans.ttf", 19)
+FOOT_HEAD = font("DejaVuSans-Bold.ttf", 20)
+FOOT_ITEM = font("DejaVuSans.ttf", 18)
+
+
+def split_lines(pen, text, face, width):
+    """Break text into as few lines as fit inside width."""
+    words = text.split()
+    rows = []
+    current = ""
+    for word in words:
+        trial = word if not current else current + " " + word
+        if pen.textlength(trial, font=face) <= width:
+            current = trial
         else:
-            if cur:
-                lines.append(cur)
-            cur = word
-    if cur:
-        lines.append(cur)
-    return lines
+            if current:
+                rows.append(current)
+            current = word
+    if current:
+        rows.append(current)
+    return rows
 
 
-def text_block(draw, x, y, lines, fnt, fill, leading):
-    for line in lines:
-        draw.text((x, y), line, font=fnt, fill=fill)
-        y += leading
+def block(pen, x, y, text, face, width, colour, step):
+    """Draw wrapped text, return the y just below it."""
+    for row in split_lines(pen, text, face, width):
+        pen.text((x, y), row, font=face, fill=colour)
+        y += step
     return y
 
 
-# ---------------- icons: small drawings inside a square badge ----------------
-
-def icon_globe(d, x, y, s):
-    # planet earth: blue disc, green land, sun in the corner
-    d.ellipse([x + 4, y + 4, x + s - 4, y + s - 4], fill=(147, 197, 253),
-              outline=NAVY, width=3)
-    cx, cy = x + s // 2, y + s // 2
-    d.ellipse([cx - 26, cy - 26, cx - 2, cy - 4], fill=(34, 139, 34))
-    d.ellipse([cx + 2, cy + 2, cx + 26, cy + 24], fill=(34, 139, 34))
-    d.ellipse([cx - 8, cy + 12, cx + 10, cy + 28], fill=(34, 139, 34))
-    for k in range(8):
-        ang = math.pi * k / 4
-        d.line([cx + 34 * math.cos(ang), cy + 34 * math.sin(ang),
-                cx + 42 * math.cos(ang), cy + 42 * math.sin(ang)],
-               fill=GOLD, width=3)
-    d.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill=GOLD, outline=INK, width=1)
+def framed_card(pen, x, y, w, h):
+    pen.rounded_rectangle([x, y, x + w, y + h], radius=10,
+                          fill=CARD, outline=RULE, width=1)
 
 
-def icon_flame(d, x, y, s):
-    # factory fire: orange flame over a small building
-    d.rounded_rectangle([x + 4, y + 4, x + s - 4, y + s - 4], radius=10,
-                        fill=(254, 226, 226))
-    cx = x + s // 2
-    d.rectangle([cx - 26, y + s - 34, cx + 26, y + s - 10], fill=(68, 64, 60))
-    d.rectangle([cx - 26, y + s - 34, cx + 26, y + s - 28], fill=(120, 113, 108))
-    for wx in (cx - 18, cx - 2, cx + 14):
-        d.rectangle([wx, y + s - 22, wx + 8, y + s - 14], fill=(254, 202, 202))
-    # flame: three stacked ellipses, red outside, gold inside
-    d.ellipse([cx - 16, y + 10, cx + 16, y + 48], fill=(220, 38, 38))
-    d.ellipse([cx - 10, y + 20, cx + 10, y + 48], fill=(249, 115, 22))
-    d.ellipse([cx - 5, y + 30, cx + 5, y + 48], fill=(253, 224, 71))
+def globe_mark(pen, cx, cy, r):
+    pen.ellipse([cx - r, cy - r, cx + r, cy + r], fill=SKY, outline=INK, width=3)
+    pen.arc([cx - r * 0.45, cy - r, cx + r * 0.45, cy + r],
+            start=270, end=90, fill=INK, width=2)
+    pen.arc([cx - r * 0.85, cy - r * 0.55, cx + r * 0.85, cy + r * 0.55],
+            start=270, end=90, fill=INK, width=2)
+    pen.line([cx - r, cy, cx + r, cy], fill=INK, width=2)
+    pen.ellipse([cx - r * 0.55, cy - r * 0.62, cx - r * 0.05, cy - r * 0.18],
+                fill=LEAF)
+    pen.ellipse([cx + r * 0.02, cy + r * 0.12, cx + r * 0.58, cy + r * 0.58],
+                fill=LEAF)
 
 
-def icon_shield(d, x, y, s):
-    # shield with a keyhole: the hacked database
-    d.rounded_rectangle([x + 4, y + 4, x + s - 4, y + s - 4], radius=10,
-                        fill=(239, 246, 255))
-    cx = x + s // 2
-    pts = [(cx, y + 10), (cx + 26, y + 20), (cx + 26, y + 44),
-           (cx, y + s - 10), (cx - 26, y + 44), (cx - 26, y + 20)]
-    d.polygon(pts, fill=NAVY, outline=INK)
-    d.ellipse([cx - 7, y + 28, cx + 7, y + 42], fill=(255, 255, 255))
-    d.polygon([(cx - 4, y + 40), (cx + 4, y + 40), (cx + 7, y + 56),
-               (cx - 7, y + 56)], fill=(255, 255, 255))
-    d.text((x + s - 8, y + 8), "!", font=font(SANS_B, 24), fill=RED, anchor="ra")
+def flame_mark(pen, cx, cy, r):
+    base = r * 1.05
+    pen.rectangle([cx - base, cy + r * 0.45, cx + base, cy + r * 0.95],
+                  fill=(52, 52, 54))
+    pen.rectangle([cx - base * 0.55, cy - r * 0.05, cx - base * 0.05,
+                   cy + r * 0.45], fill=(52, 52, 54))
+    pen.rectangle([cx + base * 0.12, cy + r * 0.12, cx + base * 0.62,
+                   cy + r * 0.45], fill=(52, 52, 54))
+    pen.polygon([(cx - r * 0.52, cy + r * 0.42), (cx - r * 0.42, cy - r * 0.35),
+                 (cx - r * 0.12, cy - r * 0.05), (cx + r * 0.05, cy - r * 0.62),
+                 (cx + r * 0.28, cy - r * 0.18), (cx + r * 0.5, cy + r * 0.42)],
+                fill=FLAME)
+    pen.polygon([(cx - r * 0.26, cy + r * 0.42), (cx - r * 0.2, cy - r * 0.12),
+                 (cx + r * 0.02, cy + r * 0.08), (cx + r * 0.22, cy - r * 0.28),
+                 (cx + r * 0.3, cy + r * 0.42)], fill=EMBER)
 
 
-def icon_flag(d, x, y, s):
-    # chequered flag: the Grand Prix
-    d.rounded_rectangle([x + 4, y + 4, x + s - 4, y + s - 4], radius=10,
-                        fill=(243, 244, 246))
-    d.line([x + 14, y + 10, x + 14, y + s - 8], fill=INK, width=4)
-    bx, by = x + 16, y + 14
-    cw, ch = 13, 12
-    for r in range(4):
-        for c in range(4):
-            if (r + c) % 2 == 0:
-                d.rectangle([bx + c * cw, by + r * ch,
-                             bx + (c + 1) * cw, by + (r + 1) * ch],
-                            fill=INK)
-            else:
-                d.rectangle([bx + c * cw, by + r * ch,
-                             bx + (c + 1) * cw, by + (r + 1) * ch],
-                            fill=(255, 255, 255), outline=INK)
-    d.line([bx, by, bx + 4 * cw, by], fill=INK, width=2)
-    d.line([bx, by + 4 * ch, bx + 4 * cw, by + 4 * ch], fill=INK, width=2)
+def shield_mark(pen, cx, cy, r):
+    pen.polygon([(cx - r * 0.78, cy - r * 0.62), (cx + r * 0.78, cy - r * 0.62),
+                 (cx + r * 0.78, cy + r * 0.1), (cx, cy + r * 0.95),
+                 (cx - r * 0.78, cy + r * 0.1)], fill=NAVY)
+    pen.ellipse([cx - r * 0.2, cy - r * 0.38, cx + r * 0.2, cy + r * 0.02],
+                fill=CARD)
+    pen.polygon([(cx - r * 0.14, cy - r * 0.05), (cx + r * 0.14, cy - r * 0.05),
+                 (cx + r * 0.3, cy + r * 0.55), (cx - r * 0.3, cy + r * 0.55)],
+                fill=CARD)
 
 
-def icon_controller(d, x, y, s):
-    # game controller: the teen gamer
-    d.rounded_rectangle([x + 4, y + 4, x + s - 4, y + s - 4], radius=10,
-                        fill=(237, 233, 254))
-    cx, cy = x + s // 2, y + s // 2 + 6
-    d.rounded_rectangle([cx - 30, cy - 16, cx + 30, cy + 16], radius=14,
-                        fill=(76, 29, 149), outline=INK, width=2)
-    d.rectangle([cx - 22, cy - 4, cx - 10, cy + 4], fill=(255, 255, 255))
-    d.rectangle([cx - 18, cy - 8, cx - 14, cy + 8], fill=(255, 255, 255))
-    for dx, dy, col in ((16, -7, (253, 224, 71)), (22, 0, (220, 38, 38)),
-                        (16, 7, (34, 139, 34)), (10, 0, (37, 99, 235))):
-        d.ellipse([cx + dx - 3, cy + dy - 3, cx + dx + 3, cy + dy + 3],
-                  fill=col, outline=(255, 255, 255))
-    d.text((cx, y + 8), "16", font=font(SANS_B, 20), fill=INK, anchor="ma")
+def flag_mark(pen, cx, cy, r):
+    pen.line([cx - r * 0.62, cy - r * 0.95, cx - r * 0.62, cy + r * 0.95],
+             fill=INK, width=5)
+    top = cy - r * 0.92
+    left = cx - r * 0.55
+    cell = r * 0.34
+    for row in range(3):
+        for col in range(4):
+            if (row + col) % 2 == 0:
+                pen.rectangle([left + col * cell, top + row * cell,
+                               left + (col + 1) * cell, top + (row + 1) * cell],
+                              fill=INK)
+    pen.rectangle([left, top, left + 4 * cell, top + 3 * cell],
+                  outline=INK, width=2)
 
 
-def icon_bigben(d, x, y, s):
-    # Big Ben: the Brexit row
-    d.rounded_rectangle([x + 4, y + 4, x + s - 4, y + s - 4], radius=10,
-                        fill=(254, 243, 199))
-    cx = x + s // 2
-    d.polygon([(cx - 12, y + 12), (cx + 12, y + 12), (cx, y + 2)],
-              fill=(68, 64, 60))
-    d.rectangle([cx - 12, y + 12, cx + 12, y + s - 8], fill=(120, 113, 108),
-                outline=INK, width=2)
-    d.ellipse([cx - 13, y + 16, cx + 13, y + 42], fill=(255, 255, 255),
-              outline=INK, width=2)
-    d.line([cx, y + 29, cx, y + 20], fill=INK, width=2)
-    d.line([cx, y + 29, cx + 7, y + 32], fill=INK, width=2)
-    for wy in range(y + 50, y + s - 12, 12):
-        d.rectangle([cx - 7, wy, cx + 7, wy + 5], fill=(254, 243, 199))
+def pad_mark(pen, cx, cy, r):
+    pen.rounded_rectangle([cx - r, cy - r * 0.62, cx + r, cy + r * 0.62],
+                          radius=16, fill=GRAPE)
+    pen.line([cx - r * 0.52, cy, cx - r * 0.22, cy], fill=CARD, width=6)
+    pen.line([cx - r * 0.37, cy - r * 0.15, cx - r * 0.37, cy + r * 0.15],
+             fill=CARD, width=6)
+    for bx, by, shade in ((r * 0.3, -r * 0.18, EMBER),
+                          (r * 0.52, r * 0.02, CARD),
+                          (r * 0.3, r * 0.22, (120, 220, 130))):
+        pen.ellipse([cx + bx - 7, cy + by - 7, cx + bx + 7, cy + by + 7],
+                    fill=shade)
 
 
-ICONS = {
-    "globe": icon_globe,
-    "flame": icon_flame,
-    "shield": icon_shield,
-    "flag": icon_flag,
-    "controller": icon_controller,
-    "bigben": icon_bigben,
+def tower_mark(pen, cx, cy, r):
+    pen.rectangle([cx - r * 0.34, cy - r * 0.9, cx + r * 0.34, cy + r * 0.95],
+                  fill=SAND, outline=INK, width=2)
+    pen.polygon([(cx - r * 0.44, cy - r * 0.9), (cx, cy - r * 1.15),
+                 (cx + r * 0.44, cy - r * 0.9)], fill=INK)
+    pen.ellipse([cx - r * 0.27, cy - r * 0.78, cx + r * 0.27, cy - r * 0.24],
+                fill=CARD, outline=INK, width=2)
+    pen.line([cx, cy - r * 0.51, cx, cy - r * 0.62], fill=INK, width=3)
+    pen.line([cx, cy - r * 0.51, cx + r * 0.13, cy - r * 0.44], fill=INK, width=3)
+    for wy in (-0.08, 0.22, 0.52):
+        pen.rectangle([cx - r * 0.16, cy + r * wy, cx + r * 0.16,
+                       cy + r * (wy + 0.16)], fill=INK)
+
+
+MARKS = {
+    "globe": globe_mark,
+    "flame": flame_mark,
+    "shield": shield_mark,
+    "flag": flag_mark,
+    "pad": pad_mark,
+    "tower": tower_mark,
 }
 
+LEAD = {
+    "tag": "ANTALYA, TURKEY  —  CLIMATE",
+    "mark": "globe",
+    "head": "COP31 IN OVERTIME AS NEW DRAFT SEEKS TO SAVE TALKS",
+    "body": "Climate talks run into a second day of overtime, split over "
+            "fossil fuels and funding for poorer nations.",
+}
 
-# ---------------- cards ----------------
+GRID = [
+    {
+        "tag": "INDONESIA",
+        "mark": "flame",
+        "head": "36 MISSING AFTER CANDY FACTORY FIRE",
+        "body": "Candy factory fire in Banten kills 3, injures 4; "
+                "36 workers still missing.",
+    },
+    {
+        "tag": "UNITED STATES",
+        "mark": "shield",
+        "head": "FBI PROBES REPORTED HACK",
+        "body": "FBI investigates an apparent breach of the NCIC "
+                "database used by police.",
+    },
+    {
+        "tag": "SPORT — FORMULA 1",
+        "mark": "flag",
+        "head": "VERSTAPPEN WINS WILD LAS VEGAS GP",
+        "body": "Norris and Piastri on the podium; Russell crashes "
+                "and the Ferraris collide.",
+    },
+    {
+        "tag": "UNITED STATES",
+        "mark": "pad",
+        "head": "TEEN GAMER HELPS FBI RESCUE GIRL",
+        "body": "A 16-year-old met a girl in an online game, then "
+                "helped the FBI rescue her.",
+    },
+]
 
-def card(d, x, y, w, h, kicker, headline, summary, icon, icon_size=84):
-    d.rounded_rectangle([x, y, x + w, y + h], radius=8, fill=CARD,
-                        outline=(200, 196, 188), width=1)
-    ix, iy = x + 14, y + (h - icon_size) // 2
-    ICONS[icon](d, ix, iy, icon_size)
-    tx = x + 14 + icon_size + 14
-    tw = x + w - 14 - tx
-    cy = y + 12
-    d.text((tx, cy), kicker, font=font(SANS_B, 15), fill=RED)
-    cy += 24
-    hl = wrap(d, headline, font(SERIF_B, 26), tw)
-    cy = text_block(d, tx, cy, hl[:2], font(SERIF_B, 26), INK, 31)
-    cy += 4
-    sm = wrap(d, summary, font(SANS, 17), tw)
-    text_block(d, tx, cy, sm[:2], font(SANS, 17), MUTED, 21)
+WIDE = {
+    "tag": "BRITAIN",
+    "mark": "tower",
+    "head": "MAY 'AGHAST' AT BURNHAM'S EU PLANS",
+    "body": "The former PM tells the BBC 'Brexit is done' as Andy "
+            "Burnham floats closer ties with the EU.",
+}
+
+ALSO = [
+    "Alcaraz v Zverev in tonight's ATP Finals decider",
+    "St. Johns River flood still at record levels",
+    "BBC apologises for Strictly noise disruption",
+    "Kate's new documentary leads the front pages",
+]
 
 
-def wide_card(d, x, y, w, h, kicker, headline, summary, icon):
-    d.rounded_rectangle([x, y, x + w, y + h], radius=8, fill=CARD,
-                        outline=(200, 196, 188), width=1)
-    ix, iy = x + 16, y + (h - 110) // 2
-    ICONS[icon](d, ix, iy, 110)
-    tx = x + 16 + 110 + 18
-    tw = x + w - 16 - tx
-    cy = y + 14
-    d.text((tx, cy), kicker, font=font(SANS_B, 16), fill=RED)
-    cy += 26
-    hl = wrap(d, headline, font(SERIF_B, 30), tw)
-    cy = text_block(d, tx, cy, hl[:2], font(SERIF_B, 30), INK, 36)
-    cy += 4
-    sm = wrap(d, summary, font(SANS, 19), tw)
-    text_block(d, tx, cy, sm[:2], font(SANS, 19), MUTED, 24)
-
-
-def main():
-    img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
-
-    # masthead
+def header(pen):
     title = "THE WORLD TODAY"
-    d.text((W // 2, 58), title, font=font(SERIF_B, 66), fill=INK, anchor="mm")
-    d.text((W // 2, 108), "SUNDAY, 22 NOVEMBER 2026",
-           font=font(SANS_B, 23), fill=RED, anchor="mm")
-    d.line([28, 128, W - 28, 128], fill=INK, width=3)
-    d.line([28, 134, W - 28, 134], fill=INK, width=1)
+    pen.text(((PAGE - pen.textlength(title, font=TITLE)) / 2, 24),
+             title, font=TITLE, fill=INK)
+    dateline = "SUNDAY, 22 NOVEMBER 2026"
+    pen.text(((PAGE - pen.textlength(dateline, font=DATE)) / 2, 106),
+             dateline, font=DATE, fill=ACCENT)
+    pen.line([EDGE, 150, PAGE - EDGE, 150], fill=INK, width=3)
+    pen.line([EDGE, 156, PAGE - EDGE, 156], fill=INK, width=1)
 
-    # lead story
-    lx, ly, lw, lh = 28, 144, 968, 216
-    d.rounded_rectangle([lx, ly, lx + lw, ly + lh], radius=8, fill=CARD,
-                        outline=(200, 196, 188), width=1)
-    d.text((48, ly + 14), "ANTALYA, TURKEY  —  CLIMATE", font=font(SANS_B, 17),
-           fill=RED)
-    ICONS["globe"](d, lx + lw - 176, ly + 32, 150)
-    hl = wrap(d, "COP31 IN OVERTIME AS NEW DRAFT SEEKS TO SAVE TALKS",
-              font(SERIF_B, 40), lw - 40 - 190)
-    y = text_block(d, 48, ly + 42, hl, font(SERIF_B, 40), INK, 48)
-    sm = wrap(d, "Climate talks run into a second day of overtime, split over "
-                 "fossil fuels and funding for poorer nations.",
-              font(SANS, 21), lw - 40 - 190)
-    text_block(d, 48, y + 6, sm, font(SANS, 21), MUTED, 26)
 
-    # grid rows
-    gy, gh, gap = 372, 158, 10
-    cw = 478
-    card(d, 28, gy, cw, gh, "INDONESIA",
-         "36 MISSING AFTER CANDY FACTORY FIRE",
-         "Candy factory fire in Banten kills 3, injures 4; "
-         "36 workers still missing.",
-         "flame")
-    card(d, 518, gy, cw, gh, "UNITED STATES",
-         "FBI PROBES REPORTED HACK",
-         "FBI investigates an apparent breach of the NCIC database "
-         "used by police.",
-         "shield")
-    card(d, 28, gy + gh + gap, cw, gh, "SPORT — FORMULA 1",
-         "VERSTAPPEN WINS WILD LAS VEGAS GP",
-         "Norris and Piastri on the podium; Russell crashes and the "
-         "Ferraris collide.",
-         "flag")
-    card(d, 518, gy + gh + gap, cw, gh, "UNITED STATES",
-         "TEEN GAMER HELPS FBI RESCUE GIRL",
-         "A 16-year-old met a girl in an online game, then helped "
-         "the FBI rescue her.",
-         "controller")
-    wide_card(d, 28, gy + 2 * (gh + gap), 968, gh, "BRITAIN",
-              "MAY 'AGHAST' AT BURNHAM'S EU PLANS",
-              "The former PM tells the BBC 'Brexit is done' as Andy Burnham "
-              "floats closer ties with the EU.",
-              "bigben")
+def lead_story(pen, y, height):
+    framed_card(pen, EDGE, y, INNER, height)
+    pen.text((EDGE + 22, y + 14), LEAD["tag"], font=TAG, fill=ACCENT)
+    text_w = INNER - 44 - 168
+    block(pen, EDGE + 22, y + 46, LEAD["head"], HEAD_BIG, text_w, INK, 46)
+    block(pen, EDGE + 22, y + 142, LEAD["body"], BODY_BIG, text_w, MUTED, 27)
+    MARKS[LEAD["mark"]](pen, PAGE - EDGE - 22 - 72, y + height // 2, 66)
 
-    # footer: also today
-    fx, fy, fw, fh = 28, 878, 968, 130
-    d.rounded_rectangle([fx, fy, fx + fw, fy + fh], radius=8, fill=NAVY)
-    d.text((fx + 18, fy + 12), "ALSO TODAY", font=font(SANS_B, 19),
-           fill=(255, 255, 255))
-    items = [
-        "Alcaraz v Zverev in tonight's ATP Finals decider",
-        "St. Johns River flood still at record levels",
-        "BBC apologises for Strictly noise disruption",
-        "Kate's new documentary leads the front pages",
-    ]
-    fnt = font(SANS, 17)
-    col_w = (fw - 36) // 2
-    for i, item in enumerate(items):
-        cx = fx + 18 + (i % 2) * col_w
-        cy = fy + 44 + (i // 2) * 38
-        d.text((cx, cy), "\u25aa  " + item, font=fnt, fill=(226, 232, 240))
 
-    img.save(OUT, optimize=True)
-    print("wrote", OUT, os.path.getsize(OUT), "bytes")
+def grid_story(pen, x, y, w, h, story):
+    framed_card(pen, x, y, w, h)
+    pen.text((x + 16, y + 12), story["tag"], font=TAG_SMALL, fill=ACCENT)
+    icon_y = y + 44
+    MARKS[story["mark"]](pen, x + 16 + 38, icon_y + 38, 36)
+    head_x = x + 110
+    head_w = w - 110 - 16
+    block(pen, head_x, y + 42, story["head"], HEAD_MID, head_w, INK, 31)
+    block(pen, x + 16, y + 122, story["body"], BODY_MID, w - 32, MUTED, 24)
+
+
+def wide_story(pen, y, height):
+    framed_card(pen, EDGE, y, INNER, height)
+    pen.text((EDGE + 22, y + 12), WIDE["tag"], font=TAG, fill=ACCENT)
+    MARKS[WIDE["mark"]](pen, EDGE + 22 + 42, y + height // 2 + 16, 36)
+    text_x = EDGE + 22 + 104
+    text_w = INNER - 22 - 104 - 22
+    block(pen, text_x, y + 40, WIDE["head"], HEAD_WIDE, text_w, INK, 35)
+    block(pen, text_x, y + 78, WIDE["body"], BODY_MID, text_w, MUTED, 24)
+
+
+def footer(pen, y, height):
+    pen.rounded_rectangle([EDGE, y, PAGE - EDGE, y + height], radius=10,
+                          fill=NAVY)
+    pen.text((EDGE + 22, y + 12), "ALSO TODAY", font=FOOT_HEAD,
+             fill=(255, 255, 255))
+    col_w = (INNER - 44 - GAP) // 2
+    for idx, item in enumerate(ALSO):
+        col = idx % 2
+        row = idx // 2
+        ix = EDGE + 22 + col * (col_w + GAP)
+        iy = y + 46 + row * 28
+        pen.text((ix, iy), "▪", font=FOOT_ITEM, fill=(255, 255, 255))
+        block(pen, ix + 20, iy, item, FOOT_ITEM, col_w - 20,
+              (235, 238, 245), 22)
+
+
+def paint():
+    canvas = Image.new("RGB", (PAGE, PAGE), PAPER)
+    pen = ImageDraw.Draw(canvas)
+    header(pen)
+    lead_story(pen, 168, 196)
+    cell_w = (INNER - GAP) // 2
+    cell_h = 178
+    for pos, story in enumerate(GRID):
+        cx = EDGE + (pos % 2) * (cell_w + GAP)
+        cy = 380 + (pos // 2) * (cell_h + GAP)
+        grid_story(pen, cx, cy, cell_w, cell_h, story)
+    wide_story(pen, 768, 118)
+    footer(pen, 902, 102)
+    return canvas
 
 
 if __name__ == "__main__":
-    main()
+    paint().save(HERE / "entry.png")
+    print("wrote", HERE / "entry.png")
